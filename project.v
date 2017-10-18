@@ -374,6 +374,11 @@ Ltac nd_destruct_and n :=
   ].
 Ltac nd_split := apply Nd_andI.
 
+Ltac nd_exfalso := apply Nd_botE.
+
+Ltac nd_unapply n := eapply Nd_impE; [|nd_assumption n].
+Ltac nd_revert n := nd_unapply n; nd_weak n.
+
 Lemma double_neg_simpl :
   forall ax Gamma A B, nd ax Gamma A -> nd ax Gamma (dnegA B A).
 Proof.
@@ -406,6 +411,14 @@ Proof.
   eapply Nd_orE; [nd_weak 0; eauto| |].
   - nd_assumption.
   - nd_apply 1; nd_assumption.
+Defined.
+
+Lemma double_neg_or :
+  forall ax Gamma A B, nd ax Gamma (dnegA A B) -> nd ax Gamma (dnegA A (B @\/ A)).
+Proof.
+  intros ax Gamma A B H.
+  nd_intro. eapply Nd_impE; [nd_weak 0; apply H|].
+  nd_intro. nd_apply 1. nd_left; nd_assumption.
 Defined.
 
 Lemma or_double_neg_rev :
@@ -466,135 +479,10 @@ Lemma double_neg_bottom :
 Proof.
   intros Gamma A H.
   eapply Nd_impE; [apply H|].
-  apply Nd_impI. eapply Nd_orE.
-  - apply Nd_assume.
-  - apply Nd_botE; apply Nd_assume.
-  - apply Nd_assume.
-Qed.
-
-Lemma friedman_imp_t :
-  forall ax A B Gamma, nd ax Gamma B -> nd ax Gamma (friedman B A).
-Proof.
-Admitted.
-
-Lemma friedman_imp :
-  forall ax A B C Gamma, nd ax Gamma (friedman C A) -> nd ax Gamma (A @-> friedman C B) ->
-                nd ax Gamma (friedman C B).
-Proof.
-  intros ax A. induction A.
-  - intros B C Gamma H1 H2; simpl in *.
-    apply friedman_imp_t. give_up.
-  - intros B C Gamma H1 H2; simpl in *.
-    eapply Nd_orE.
-    + apply H1.
-    + eapply Nd_impE; [apply Nd_weak; apply H2|apply Nd_assume].
-    + apply friedman_imp_t; apply Nd_assume.
-  - intros B C Gamma H1 H2; simpl in *.
-    eapply Nd_impE; [apply H2|].
-Abort.
-
-Lemma imp_friedman :
-  forall ax A B Gamma, (nd ax Gamma A -> nd ax Gamma (friedman B A)) *
-              (nd ax Gamma (dnegA B (friedman B A)) -> nd ax Gamma (dnegA B A)).
-Proof.
-  intros ax A. induction A.
-  - intros B Gamma; simpl in *. split.
-    + intros H. apply Nd_botE. auto.
-    + intros H. give_up.
-  - intros B Gamma. simpl in *. split.
-    + intros H. apply Nd_orIL. auto.
-    + intros H. apply or_double_neg_rev; auto. give_up.
-  - intros B Gamma. simpl in *.
-    split.
-    + intros H.
-      apply Nd_impI.
-      apply Nd_impE with (A := dnegA B A1); [|apply IHA1; apply Nd_assume].
-      apply Nd_weak; apply Nd_impI. apply double_neg_imp.
-      apply IHA2. eapply Nd_impE; [apply Nd_weak; apply H|apply Nd_assume].
-    + intros H.
-      apply Nd_impE with (A := dnegA B (dnegA B (friedman B A1) @-> dnegA B (friedman B A2))); [|apply H].
-      apply Nd_impI. apply double_neg_weak.
-(*  - intros B Gamma H. simpl in *. apply Nd_impI. apply double_neg_imp.
-    apply IHA2. eapply Nd_impE; [apply Nd_weak; apply H|]. *)
-Abort.
-
-Lemma friedman_Peano_Heyting :
-  forall Gamma A, Peano Gamma A -> forall P, Heyting (map (friedman P) Gamma) (dnegA P (friedman P A)).
-Proof.
-  intros Gamma A dn; elim dn; clear Gamma A dn.
-  - intros A Gamma H P. destruct H as [A HA | A].
-    + give_up.
-    + simpl. remember (friedman P A) as C.
-      apply double_neg_simpl.
-      apply Nd_impI. apply double_neg_weak.
-      apply Nd_impI. apply double_neg_bottom.
-      eapply Nd_impE; [apply Nd_weak; apply Nd_assume|].
-      apply double_neg_simpl. apply Nd_impI.
-      apply double_neg_weak. apply Nd_impI; apply Nd_weak.
-      eapply Nd_impE; [apply Nd_weak|]; apply Nd_assume.
-  - intros A Gamma P; simpl; apply double_neg_simpl; apply Nd_assume.
-  - intros A B Gamma H1 H2 P; simpl; apply Nd_weak; apply H2.
-  - intros A B Gamma H1 H2 P; simpl; apply double_neg_simpl.
-    apply Nd_impI; simpl in H2. apply double_neg_weak; auto.
-  - intros A B Gamma H1 H2 H3 H4 P. simpl in *.
-    apply Nd_impI. eapply Nd_impE.
-    + apply Nd_weak; apply H2.
-    + apply Nd_impI. eapply Nd_impE; [|apply Nd_weak; apply Nd_assume].
-      eapply Nd_impE. apply Nd_assume.
-      apply Nd_weak; apply Nd_weak; apply H4.
-  - intros A B Gamma H1 H2 H3 H4 P. simpl in *.
-    apply double_neg_simpl. apply Nd_andI; auto.
-  - intros A B Gamma H1 H2 P. simpl in *.
-    eapply double_neg_weakH; [|apply H2].
-    eauto using Nd_andEL, Nd_assume.
-  - intros A B Gamma H1 H2 P. simpl in *.
-    eapply double_neg_weakH; [|apply H2].
-    eauto using Nd_andER, Nd_assume.
-  - intros A B Gamma H1 H2 P. simpl in *.
-    apply double_neg_simpl; eauto using Nd_orIL.
-  - intros A B Gamma H1 H2 P. simpl in *.
-    apply double_neg_simpl; eauto using Nd_orIR.
-  - intros A B C Gamma H1 H2 H3 H4 H5 H6 P. simpl in *.
-    eapply double_neg_weakH; [|apply H2].
-    eapply Nd_orE.
-    + apply Nd_assume.
-    + apply nd_weak with (Gamma := (dnegA P (friedman P A)) :: nil); simpl.
-      apply double_neg_weak; apply H4.
-    + apply nd_weak with (Gamma := (dnegA P (friedman P B)) :: nil); simpl.
-      apply double_neg_weak; apply H6.
-  - intros A Gamma H1 H2 P; simpl in *. apply Nd_impI; apply Nd_weak.
-    eapply Nd_impE; [apply H2|]. apply Nd_impI.
-    eapply Nd_orE.
-    + apply Nd_assume.
-    + apply Nd_botE; apply Nd_assume.
-    + apply Nd_assume.
-  - intros A Gamma H1 H2 P; simpl in *. apply double_neg_simpl.
-    specialize (H2 P.|[ren (+1)]).
-    apply Nd_forallI. rewrite friedman_subst_map. auto.
-  - intros A Gamma t H1 H2 P; simpl in *.
-    specialize (H2 P).
-    eapply double_neg_weakH; [|apply H2].
-    replace (dnegA P (friedman P A.|[t/]))
-      with (dnegA P.|[ren (+1)] (friedman P.|[ren (+1)] A)).|[t/]
-      by (asimpl; rewrite friedman_subst; autosubst).
-    apply Nd_forallE; apply Nd_assume.
-  - intros A Gamma t H1 H2 P; simpl in *.
-    apply double_neg_simpl.
-    specialize (H2 P).
-    apply Nd_impI. eapply Nd_impE; [apply Nd_weak; apply H2|].
-    apply Nd_impI. eapply Nd_impE; [apply Nd_weak; apply Nd_assume|].
-    eapply Nd_existI. asimpl; rewrite friedman_subst; asimpl; apply Nd_assume.
-  - intros A B Gamma H1 H2 H3 H4 P; simpl in *.
-    specialize (H4 P.|[ren (+1)]).
-    specialize (H2 P).
-    apply double_neg_4 in H2.
-    eapply double_neg_weakH; [|apply H2].
-    eapply Nd_existE; [apply Nd_assume|].
-    rewrite subst_cons.
-    apply nd_weak with (Gamma := friedman P.|[ren (+1)] A :: nil); simpl.
-    rewrite friedman_subst_map; simpl. rewrite friedman_subst. auto.
-    (* Defined. *)
-Admitted.
+  nd_intro. nd_destruct_or 0.
+  - nd_exfalso; nd_assumption.
+  - nd_assumption.
+Defined.
 
 Fixpoint QF P : Type :=
   match P with
@@ -616,7 +504,28 @@ Proof.
   intros ax Gamma t1 t2 H.
   apply Nd_eq_elim with (A := Var 0 @= t1.[ren (+1)]) in H; asimpl in *; auto.
   apply Nd_eq_refl.
-Qed.
+Defined.
+
+Lemma Peano_0_ne_Sn_i : forall Gamma t,
+    Heyting Gamma (@~ (Succ t @= Zero)).
+Proof.
+  intros Gamma t.
+  evar (Delta : env).
+  set (H := Nd_axiom PeanoAxioms _ ?Delta Peano_0_ne_Sn).
+  apply Nd_forallE with (t := t) in H.
+  asimpl in H.
+  apply H.
+Defined.
+
+Lemma Peano_ne_0_Sn_i : forall Gamma t,
+    Heyting Gamma (Exists ((@~ (t.[ren (+1)] @= Zero)) @-> (Succ (Var 0) @= t.[ren (+1)]))).
+Proof.
+  intros Gamma t.
+  evar (Delta : env).
+  set (H := Nd_axiom PeanoAxioms _ ?Delta Peano_ne_0_Sn).
+  apply Nd_forallE with (t := t) in H.
+  asimpl in H. apply H.
+Defined.
 
 Lemma Peano_S_inj_i : forall Gamma t1 t2,
     Heyting ((Succ t1 @= Succ t2) :: Gamma) (t1 @= t2).
@@ -630,47 +539,82 @@ Proof.
   eapply Nd_impE; [apply H|apply Nd_assume].
 Defined.
 
+Lemma Peano_plus_0_i : forall Gamma t,
+    Heyting Gamma ((t @+ Zero) @= t).
+Proof.
+  intros Gamma t.
+  evar (Delta : env).
+  set (H := Nd_axiom PeanoAxioms _ ?Delta Peano_plus_0).
+  apply Nd_forallE with (t := t) in H.
+  asimpl in H.
+  apply H.
+Defined.
+
+Lemma Peano_plus_S_i : forall Gamma t1 t2,
+    Heyting Gamma ((Succ t1 @+ t2) @= Succ (t1 @+ t2)).
+Proof.
+  intros Gamma t1 t2.
+  evar (Delta : env).
+  set (H := Nd_axiom PeanoAxioms _ ?Delta Peano_plus_S).
+  apply Nd_forallE with (t := t1) in H.
+  apply Nd_forallE with (t := t2) in H.
+  asimpl in H.
+  apply H.
+Defined.
+
+Lemma Peano_mult_0_i : forall Gamma t,
+    Heyting Gamma ((Zero @* t) @= Zero).
+Proof.
+  intros Gamma t.
+  evar (Delta : env).
+  set (H := Nd_axiom PeanoAxioms _ ?Delta Peano_mult_0).
+  apply Nd_forallE with (t := t) in H.
+  asimpl in H.
+  apply H.
+Defined.
+
+Lemma Peano_mult_S_i : forall Gamma t1 t2,
+    Heyting Gamma ((Succ t1 @* t2) @= t1 @* t2 @+ t2).
+Proof.
+  intros Gamma t1 t2.
+  evar (Delta : env).
+  set (H := Nd_axiom PeanoAxioms _ ?Delta Peano_mult_S).
+  apply Nd_forallE with (t := t1) in H.
+  apply Nd_forallE with (t := t2) in H.
+  asimpl in H.
+  apply H.
+Defined.
+
+Ltac HA_rec :=
+  eapply Nd_impE; [
+    eapply Nd_impE; [
+      apply Nd_axiom; apply Peano_rec
+     |asimpl]
+   |asimpl; apply Nd_forallI; asimpl; nd_intro].
+
 Lemma eq_decidable_forall : forall Gamma,
     Heyting Gamma (Forall (Forall ((Var 1 @= Var 0) @\/ @~ (Var 1 @= Var 0)))).
 Proof.
   intros Gamma.
-  eapply Nd_impE.
-  - eapply Nd_impE.
-    + apply Nd_axiom. apply Peano_rec.
-    + asimpl.
-      eapply Nd_impE.
-      * eapply Nd_impE.
-        -- apply Nd_axiom. apply Peano_rec.
-        -- asimpl. apply Nd_orIL; apply Nd_eq_refl.
-      * asimpl. apply Nd_forallI; apply Nd_impI; apply Nd_weak; apply Nd_orIR.
-        apply Nd_impI.
-        evar (Delta : env).
-        set (H := (Nd_axiom _ _ ?Delta Peano_0_ne_Sn)).
-        apply Nd_forallE with (t := Var 0) in H.
-        asimpl in H.
-        eapply Nd_impE; [apply H|].
-        apply nd_eq_sym; apply Nd_assume.
-  - asimpl. apply Nd_forallI. apply Nd_impI.
-    eapply Nd_impE.
-    + eapply Nd_impE.
-      * apply Nd_axiom. apply Peano_rec.
-      * asimpl.
-        apply Nd_orIR.
-        evar (Delta : env).
-        set (H := (Nd_axiom _ _ ?Delta Peano_0_ne_Sn)).
-        apply Nd_forallE with (t := Var 0) in H.
-        asimpl in H; apply H.
-    + asimpl. apply Nd_forallI; asimpl.
-      apply Nd_impI. apply Nd_weak.
+  HA_rec.
+  - HA_rec.
+    + nd_left; apply Nd_eq_refl.
+    + nd_weak 0; nd_right.
+      nd_intro.
+      eapply Nd_impE; [|apply nd_eq_sym; nd_assumption].
+      apply Peano_0_ne_Sn_i.
+  - HA_rec.
+    + nd_right.
+      apply Peano_0_ne_Sn_i.
+    + nd_weak 0.
       eapply Nd_impE; [|apply Nd_forallE with (t := Var 0); apply Nd_assume].
-      asimpl. apply Nd_impI.
-      eapply Nd_orE; [apply Nd_assume| |].
-      * apply Nd_orIL.
+      asimpl. nd_intro.
+      nd_destruct_or 0.
+      * nd_left.
         evar (Delta : env).
         set (H := (Nd_eq_elim PeanoAxioms ?Delta (Succ (Var 2) @= Succ (Var 0)) (Var 1) (Var 0))).
-        asimpl in H. apply H; [apply Nd_assume|apply Nd_eq_refl].
-      * apply Nd_orIR. apply Nd_impI.
-        eapply Nd_impE; [apply Nd_weak; apply Nd_assume|].
+        asimpl in H. apply H; [nd_assumption|apply Nd_eq_refl].
+      * nd_right; nd_intro; nd_apply 1.
         apply Peano_S_inj_i.
 Defined.
 
@@ -687,36 +631,157 @@ Defined.
 Lemma qf_decidable : forall Gamma A, QF A -> Heyting Gamma (A @\/ (@~ A)).
 Proof.
   intros Gamma A. induction A; intros H; simpl in H; try (exfalso; assumption).
-  - apply Nd_orIR. apply Nd_impI. apply Nd_assume.
+  - nd_right; nd_intro; nd_assumption.
   - destruct H as [H1 H2].
     eapply Nd_orE; [apply IHA2; auto| |].
-    + apply Nd_orIL; apply Nd_impI; apply Nd_weak; apply Nd_assume.
-    + eapply Nd_orE; [apply Nd_weak; apply IHA1; auto| |].
-      * apply Nd_orIR; apply Nd_impI.
-        eapply Nd_impE; [apply Nd_weak; apply Nd_weak; apply Nd_assume|].
-        eapply Nd_impE; [|apply Nd_weak]; apply Nd_assume.
-      * apply Nd_orIL; apply Nd_impI. apply Nd_botE.
-        eapply Nd_impE; [apply Nd_weak|]; apply Nd_assume.
+    + apply Nd_orIL; nd_intro; nd_assumption.
+    + eapply Nd_orE; [nd_weak 0; apply IHA1; auto| |].
+      * nd_right; nd_intro.
+        nd_apply 2. nd_apply 0. nd_assumption.
+      * nd_left; nd_intro; nd_exfalso.
+        nd_apply 1; nd_assumption.
   - destruct H as [H1 H2].
     eapply Nd_orE; [apply IHA1; auto| |].
-    + eapply Nd_orE; [apply Nd_weak; apply IHA2; auto| |].
-      * apply Nd_orIL; apply Nd_andI; [apply Nd_weak|]; apply Nd_assume.
-      * apply Nd_orIR; apply Nd_impI.
-        eapply Nd_impE; [apply Nd_weak; apply Nd_assume|].
-        eapply Nd_andER; apply Nd_assume.
-    + apply Nd_orIR; apply Nd_impI.
-      eapply Nd_impE; [apply Nd_weak; apply Nd_assume|].
-      eapply Nd_andEL; apply Nd_assume.
+    + eapply Nd_orE; [nd_weak 0; apply IHA2; auto| |].
+      * nd_left; nd_split; nd_assumption.
+      * nd_right; nd_intro.
+        nd_destruct_and 0; nd_apply 2; nd_assumption.
+    + nd_right; nd_intro.
+      nd_apply 1; nd_destruct_and 0; nd_assumption.
   - destruct H as [H1 H2].
     eapply Nd_orE; [apply IHA1; auto| |].
-    + apply Nd_orIL; apply Nd_orIL; apply Nd_assume.
+    + nd_left; nd_left; nd_assumption.
     + eapply Nd_orE; [apply Nd_weak; apply IHA2; auto| |].
-      * apply Nd_orIL; apply Nd_orIR; apply Nd_assume.
-      * apply Nd_orIR; apply Nd_impI.
-        eapply Nd_orE; [apply Nd_assume| |].
-        -- eapply Nd_impE; [apply Nd_weak; apply Nd_weak; apply Nd_weak|]; apply Nd_assume.
-        -- eapply Nd_impE; [apply Nd_weak; apply Nd_weak|]; apply Nd_assume.
+      * nd_left; nd_right; nd_assumption.
+      * nd_right; nd_intro; nd_destruct_or 0; [nd_apply 2 | nd_apply 1]; nd_assumption.
   - apply eq_decidable.
+Defined.
+
+Lemma friedman_Peano_Heyting :
+  forall Gamma A, Peano Gamma A -> forall P, Heyting (map (friedman P) Gamma) (dnegA P (friedman P A)).
+Proof.
+  intros Gamma A dn; elim dn; clear Gamma A dn.
+  - intros A Gamma H P. destruct H as [A HA | A].
+    + apply double_neg_simpl.
+      destruct HA; simpl.
+      * apply Nd_forallI. apply double_neg_simpl.
+        nd_intro; apply double_neg_imp.
+        nd_destruct_or 0; [|nd_right; nd_assumption].
+        nd_left; nd_revert 0.
+        apply Peano_0_ne_Sn_i.
+      * apply Nd_forallI. apply double_neg_simpl; apply double_neg_simpl.
+        eapply Nd_impE; [|apply Nd_forallE with (t := Var 0); apply Nd_axiom; apply Peano_ne_0_Sn].
+        asimpl. nd_intro.
+        eapply Nd_existE; [nd_assumption|].
+        rewrite subst_cons; nd_weak 1. asimpl.
+        apply Nd_existI with (t := Var 0). asimpl.
+        nd_intro. apply double_neg_weak. apply double_neg_or.
+        apply Nd_impE with (A := dnegA P.|[ren (+2)] (Var 1 @= Zero @-> Bottom)).
+        -- nd_intro. apply double_neg_imp. nd_apply 2. nd_assumption.
+        -- nd_weak 1. nd_intro. eapply Nd_impE; [nd_apply 1|].
+           ++ nd_weak 1. nd_intro.
+              eapply Nd_impE; [|apply eq_decidable].
+              nd_intro; nd_destruct_or 0.
+              ** nd_apply 1; nd_left; nd_assumption.
+              ** nd_apply 2; nd_assumption.
+           ++ nd_intro. nd_destruct_or 0; [nd_exfalso|]; nd_assumption.
+      * apply Nd_forallI. apply double_neg_simpl.
+        apply Nd_forallI. apply double_neg_simpl.
+        nd_intro. apply double_neg_imp.
+        nd_destruct_or 0; [|nd_right; nd_assumption].
+        nd_left. apply Peano_S_inj_i.
+      * apply Nd_forallI. apply double_neg_simpl.
+        nd_left. apply Peano_plus_0_i.
+      * apply Nd_forallI. apply double_neg_simpl.
+        apply Nd_forallI. apply double_neg_simpl.
+        nd_left. apply Peano_plus_S_i.
+      * apply Nd_forallI. apply double_neg_simpl.
+        nd_left. apply Peano_mult_0_i.
+      * apply Nd_forallI. apply double_neg_simpl.
+        apply Nd_forallI. apply double_neg_simpl.
+        nd_left. apply Peano_mult_S_i.
+      * eapply Nd_impE; [|apply Nd_axiom; apply Peano_rec with
+          (P := dnegA P.|[ren (+1)] (friedman P.|[ren (+1)] P0))].
+        nd_intro. nd_intro. apply double_neg_simpl.
+        nd_intro. apply double_neg_imp.
+        eapply Nd_impE; [nd_apply 2|]; asimpl.
+        -- rewrite friedman_subst. asimpl. nd_assumption.
+        -- nd_weak 1. nd_weak 1. apply Nd_forallI.
+           eapply Nd_impE; [|apply Nd_forallE with (t := Var 0); nd_assumption].
+           rewrite subst_cons. nd_weak 0. asimpl.
+           nd_intro. nd_intro. rewrite friedman_subst.
+           eapply Nd_impE; [|nd_assumption 1]; nd_intro.
+           apply double_neg_weak.
+           asimpl. nd_apply 0. nd_assumption.
+    + simpl. remember (friedman P A) as C.
+      apply double_neg_simpl.
+      nd_intro. apply double_neg_weak.
+      nd_intro. apply double_neg_bottom.
+      nd_apply 1. apply double_neg_simpl.
+      nd_intro. apply double_neg_weak.
+      nd_intro; nd_apply 2; nd_assumption.
+  - intros A Gamma P; simpl; apply double_neg_simpl; nd_assumption.
+  - intros A B Gamma H1 H2 P; simpl; nd_weak 0; apply H2.
+  - intros A B Gamma H1 H2 P; simpl in *; apply double_neg_simpl.
+    nd_intro. apply double_neg_weak; auto.
+  - intros A B Gamma H1 H2 H3 H4 P. simpl in *.
+    nd_intro. eapply Nd_impE; [nd_weak 0; apply H2|].
+    nd_intro. nd_revert 1. nd_apply 0. nd_weak 0; apply H4.
+  - intros A B Gamma H1 H2 H3 H4 P. simpl in *.
+    apply double_neg_simpl. nd_split; auto.
+  - intros A B Gamma H1 H2 P. simpl in *.
+    eapply double_neg_weakH; [|apply H2].
+    nd_destruct_and 0; nd_assumption.
+  - intros A B Gamma H1 H2 P. simpl in *.
+    eapply double_neg_weakH; [|apply H2].
+    nd_destruct_and 0; nd_assumption.
+  - intros A B Gamma H1 H2 P. simpl in *.
+    apply double_neg_simpl; nd_left; auto.
+  - intros A B Gamma H1 H2 P. simpl in *.
+    apply double_neg_simpl; nd_right; auto.
+  - intros A B C Gamma H1 H2 H3 H4 H5 H6 P. simpl in *.
+    eapply double_neg_weakH; [|apply H2].
+    nd_destruct_or 0; apply double_neg_weak; [apply H4 | apply H6].
+  - intros A Gamma H1 H2 P; simpl in *.
+    nd_intro. nd_weak 0.
+    eapply Nd_impE; [apply H2|].
+    nd_intro. nd_destruct_or 0; [nd_exfalso|]; nd_assumption.
+  - intros A Gamma H1 H2 P; simpl in *.
+    apply double_neg_simpl.
+    specialize (H2 P.|[ren (+1)]).
+    apply Nd_forallI. rewrite friedman_subst_map. auto.
+  - intros A Gamma t H1 H2 P; simpl in *.
+    specialize (H2 P).
+    eapply double_neg_weakH; [|apply H2].
+    replace (dnegA P (friedman P A.|[t/]))
+      with (dnegA P.|[ren (+1)] (friedman P.|[ren (+1)] A)).|[t/]
+      by (asimpl; rewrite friedman_subst; autosubst).
+    apply Nd_forallE; nd_assumption.
+  - intros A Gamma t H1 H2 P; simpl in *.
+    apply double_neg_simpl.
+    specialize (H2 P).
+    nd_intro. eapply Nd_impE; [nd_weak 0; apply H2|].
+    nd_intro. nd_apply 1.
+    eapply Nd_existI. asimpl; rewrite friedman_subst; asimpl; nd_assumption.
+  - intros A B Gamma H1 H2 H3 H4 P; simpl in *.
+    specialize (H4 P.|[ren (+1)]); specialize (H2 P).
+    apply double_neg_4 in H2.
+    eapply double_neg_weakH; [|apply H2].
+    eapply Nd_existE; [nd_assumption|].
+    rewrite subst_cons.
+    nd_weak 1.
+    rewrite friedman_subst_map; simpl. rewrite friedman_subst. auto.
+  - intros Gamma t P; simpl in *.
+    apply double_neg_simpl. nd_left. apply Nd_eq_refl.
+  - intros Gamma A t1 t2 H1 H2 H3 H4 P.
+    nd_assert (dnegA P ((t1 @= t2) @\/ P)); [|apply H2].
+    apply double_neg_weak. nd_destruct_or 0.
+    + replace (dnegA P (friedman P A.|[t2/]))
+        with (dnegA P.|[ren (+1)] (friedman P.|[ren (+1)] A)).|[t2/]
+        by (asimpl; rewrite friedman_subst; autosubst).
+      eapply Nd_eq_elim; [nd_assumption|].
+      asimpl; rewrite friedman_subst; asimpl. nd_weak 0; apply H4.
+    + nd_intro; nd_assumption.
 Defined.
 
 Lemma friedman_or_equiv :
@@ -725,68 +790,204 @@ Lemma friedman_or_equiv :
 Proof.
   intros P. induction P.
   - intros Gamma A H. simpl in *.
-    split; apply Nd_impI; apply Nd_assume.
+    split; nd_intro; nd_assumption.
   - intros Gamma A H. simpl in *.
-    split; apply Nd_impI; apply Nd_assume.
+    split; nd_intro; nd_assumption.
   - intros Gamma A [HQF1 HQF2]. simpl in *.
     split.
-    + apply Nd_impI.
-      eapply Nd_impE; [|apply (qf_decidable _ P1 HQF1)].
-      apply Nd_impI.
-      eapply Nd_orE; [apply Nd_assume| |].
-      * eapply Nd_impE; [|apply (qf_decidable _ P2 HQF2)].
-        apply Nd_impI.
-        eapply Nd_orE; [apply Nd_assume| |].
-        -- apply Nd_orIL; apply Nd_impI; apply Nd_weak; apply Nd_assume.
-        -- apply Nd_orIR.
-           apply Nd_impE with (A := (friedman A P2) @-> A).
-           ++ eapply Nd_impE; [apply Nd_weak; apply Nd_weak; apply Nd_weak; apply Nd_weak; apply Nd_assume|].
-              apply double_neg_simpl.
+    + nd_intro.
+      eapply Nd_impE; [|apply (qf_decidable _ P1 HQF1)]; nd_intro.
+      nd_destruct_or 0.
+      * eapply Nd_impE; [|apply (qf_decidable _ P2 HQF2)]; nd_intro.
+        nd_destruct_or 0.
+        -- nd_left; nd_intro; nd_assumption.
+        -- nd_right.
+           apply Nd_impE with (A := friedman A P2 @-> A).
+           ++ nd_apply 2. apply double_neg_simpl.
               eapply Nd_impE; [apply IHP1; auto|].
-              apply Nd_orIL; apply Nd_weak; apply Nd_weak; apply Nd_assume.
-           ++ apply Nd_impI.
-              eapply Nd_orE; [|apply Nd_botE; eapply Nd_impE; [apply Nd_weak; apply Nd_weak|]; apply Nd_assume |apply Nd_assume].
-              eapply Nd_impE; [|apply Nd_assume].
-              apply IHP2; auto.
-      * apply Nd_orIL; apply Nd_impI. apply Nd_botE.
-        eapply Nd_impE; [apply Nd_weak|]; apply Nd_assume.
-    + apply Nd_impI; apply Nd_impI; apply Nd_impI.
-      eapply Nd_orE; [apply Nd_weak; apply Nd_weak; apply Nd_assume| |apply Nd_assume].
-      apply Nd_impE with (A := P1 @-> A).
-      * apply Nd_impI. eapply Nd_impE; [apply Nd_weak; apply Nd_weak; apply Nd_weak; apply Nd_assume|].
-        apply Nd_impI.
-        eapply Nd_orE; [eapply Nd_impE; [apply IHP1; auto|apply Nd_assume]| |apply Nd_assume].
-        eapply Nd_impE; [apply Nd_weak; apply Nd_weak|]; apply Nd_assume.
-      * apply Nd_impI. eapply Nd_impE; [apply Nd_weak; apply Nd_weak; apply Nd_assume|].
+              nd_left. nd_assumption.
+           ++ nd_intro.
+              eapply Nd_orE; [|nd_exfalso; nd_apply 2; nd_assumption|nd_assumption].
+              nd_revert 0; apply IHP2; auto.
+      * nd_left; nd_intro; nd_exfalso.
+        nd_apply 1; nd_assumption.
+    + nd_intro; nd_intro; nd_intro.
+      nd_destruct_or 2; [|nd_assumption].
+      nd_assert (P1 @-> A).
+      * nd_apply 3. nd_intro.
+        eapply Nd_orE; [eapply Nd_impE; [apply IHP1; auto|nd_assumption]| |nd_assumption].
+        nd_apply 2; nd_assumption.
+      * nd_intro. nd_apply 2.
         eapply Nd_impE; [apply IHP2; auto|].
-        apply Nd_orIL; eapply Nd_impE; [apply Nd_weak|]; apply Nd_assume.
+        nd_left; nd_apply 1; nd_assumption.
   - intros Gamma A [HQF1 HQF2]. simpl in *.
     split.
-    + apply Nd_impI.
-      eapply Nd_impE; [|apply (qf_decidable _ P1 HQF1)].
-      apply Nd_impI.
-      eapply Nd_orE; [apply Nd_assume| |].
-      * eapply Nd_impE; [|apply (qf_decidable _ P2 HQF2)].
-        apply Nd_impI.
-        eapply Nd_orE; [apply Nd_assume| |].
-        -- apply Nd_orIL. apply Nd_andI; [apply Nd_weak; apply Nd_weak|]; apply Nd_assume.
-        -- apply Nd_orIR. 
+    + nd_intro.
+      eapply Nd_impE; [|apply (qf_decidable _ P1 HQF1)]; nd_intro.
+      nd_destruct_or 0.
+      * eapply Nd_impE; [|apply (qf_decidable _ P2 HQF2)]; nd_intro.
+        nd_destruct_or 0.
+        -- nd_left. nd_split; nd_assumption.
+        -- nd_right. nd_destruct_and 2.
+           nd_apply 1; nd_intro.
+           nd_assert (P2 @\/ A); [|nd_revert 0; apply IHP2; auto].
+           nd_destruct_or 0; [nd_exfalso; nd_apply 4|]; nd_assumption.
+      * nd_right. nd_destruct_and 1.
+        nd_apply 0; nd_intro.
+        nd_assert (P1 @\/ A); [|nd_revert 0; apply IHP1; auto].
+        nd_destruct_or 0; [nd_exfalso; nd_apply 4|]; nd_assumption.
+    + nd_intro.
+      nd_destruct_or 0.
+      * nd_destruct_and 0. nd_split; apply double_neg_simpl.
+        -- eapply Nd_impE; [apply IHP1; auto|]. nd_left; nd_assumption.
+        -- eapply Nd_impE; [apply IHP2; auto|]. nd_left; nd_assumption.
+      * nd_split; nd_intro; nd_assumption.
+  - intros Gamma A [HQF1 HQF2]. simpl in *.
+    split.
+    + nd_intro.
+      eapply Nd_impE; [|apply (qf_decidable _ P1 HQF1)]; nd_intro.
+      nd_destruct_or 0.
+      * nd_left; nd_left; nd_assumption.
+      * eapply Nd_impE; [|apply (qf_decidable _ P2 HQF2)]; nd_intro.
+        nd_destruct_or 0.
+        -- nd_left; nd_right; nd_assumption.
+        -- nd_right. nd_destruct_or 2; nd_apply 0; nd_intro.
+           ++ nd_assert (P1 @\/ A); [|nd_revert 0; apply IHP1; auto].
+              nd_destruct_or 0; [nd_exfalso; nd_apply 4|]; nd_assumption.
+           ++ nd_assert (P2 @\/ A); [|nd_revert 0; apply IHP2; auto].
+              nd_destruct_or 0; [nd_exfalso; nd_apply 3|]; nd_assumption.
+    + nd_intro. nd_destruct_or 0.
+      * nd_destruct_or 0; [nd_left | nd_right]; apply double_neg_simpl.
+        -- eapply Nd_impE; [apply IHP1; auto|]. nd_left; nd_assumption.
+        -- eapply Nd_impE; [apply IHP2; auto|]. nd_left; nd_assumption.
+      * nd_left; nd_intro; nd_assumption.
+  - intros Gamma A H. simpl in *.
+    split; nd_intro; nd_assumption.
+  - intros; simpl in *; exfalso; auto.
+  - intros; simpl in *; exfalso; auto.
+Defined.
+
+Lemma friedman_or_equiv_l :
+  forall P Gamma A, QF P -> Heyting Gamma ((friedman A P) @-> (P @\/ A)).
+Proof.
+  intros. apply friedman_or_equiv; auto.
+Defined.
+
+Lemma friedman_or_equiv_r :
+  forall P Gamma A, QF P -> Heyting Gamma ((P @\/ A) @-> (friedman A P)).
+Proof.
+  intros. apply friedman_or_equiv; auto.
+Defined.
+
 
 Lemma tr_friedman_equiv :
   forall P A sigma, QF P ->
     equiv (tr_formula sigma (friedman A P)) (tr_formula sigma (P @\/ A)).
 Proof.
-  intros P. induction P.
-  - intros A sigma HQF.
-    simpl. apply equiv_refl.
-  - intros A sigma HQF. simpl. apply equiv_refl.
-  - intros A sigma [HQF1 HQF2]. simpl in *.
-    split.
-    + intros H. give_up.
-    + specialize (IHP1 A sigma HQF1).
-      specialize (IHP2 A sigma HQF2).
-      intros H1 H2 H3. destruct H1 as [H1 | H1]; [|assumption].
-      assert (H4 : tr_formula sigma P1 -> tr_formula sigma A).
-      * intros H. apply H3. apply IHP2. left; apply H1; assumption.
-      * apply H2. intros H. apply IHP1 in H. destruct H; auto.
+  intros P A sigma H.
+  destruct (friedman_or_equiv P nil A) as [E1 E2]; auto.
+  split.
+  - apply reflect with (sigma := sigma) in E1; simpl in *; auto.
+    unfold tr_env; simpl; auto.
+  - apply reflect with (sigma := sigma) in E2; simpl in *; auto.
+    unfold tr_env; simpl; auto.
+Defined.
 
+Inductive Sigma_0 : nat -> formula -> Type :=
+| QF_Sigma : forall n A, QF A -> Sigma_0 n A
+| Exists_Sigma : forall n A, Sigma_0 (S n) A -> Sigma_0 (S n) (Exists A)
+| Pi_Sigma : forall n A, Pi_0 n A -> Sigma_0 (S n) A
+
+with Pi_0 : nat -> formula -> Type :=
+| QF_Pi : forall n A, QF A -> Pi_0 n A
+| Sigma_Pi : forall n A, Sigma_0 n A -> Pi_0 (S n) A
+| Forall_Pi : forall n A, Pi_0 (S n) A -> Pi_0 (S n) (Forall A).
+
+Fixpoint leading_exists A :=
+  match A with
+  | Exists A => S (leading_exists A)
+  | _ => 0
+  end.
+
+Fixpoint after_exists A :=
+  match A with
+  | Exists A => after_exists A
+  | _ => A
+  end.
+
+Fixpoint add_n_exists n A :=
+  match n with
+  | 0 => A
+  | S n => Exists (add_n_exists n A)
+  end.
+
+Theorem add_n_exists_inverse :
+  forall A, add_n_exists (leading_exists A) (after_exists A) = A.
+Proof.
+  intros A. induction A; simpl; congruence.
+Qed.
+
+Lemma double_neg_exists :
+  forall Gamma P A, Heyting (A :: Gamma..|[ren (+1)]) P.|[ren (+1)] -> Heyting ((dnegA P (Exists A)) :: Gamma) P.
+Proof.
+  intros Gamma P A H.
+  nd_apply 0. nd_intro. eapply Nd_existE; [nd_assumption|].
+  rewrite subst_cons; rewrite subst_cons. nd_weak 1; nd_weak 1. apply H.
+Defined.
+
+Lemma exists_imply :
+  forall n Gamma A, Heyting Gamma (A @-> (add_n_exists n A).|[ren (+n)]).
+Proof.
+  intros n. induction n as [|n IHn].
+  - intros Gamma A. asimpl. nd_intro; nd_assumption.
+  - intros Gamma A. simpl; nd_intro.
+    apply Nd_existI with (t := Var n). asimpl.
+    nd_revert 0. apply IHn.
+Defined.
+
+Lemma friedman_n_exists :
+  forall n Gamma P A, Heyting ((friedman P.|[ren (+n)] A) :: Gamma..|[ren (+n)]) P.|[ren (+n)] -> Heyting (friedman P (add_n_exists n A) :: Gamma) P.
+Proof.
+  intros n. induction n as [|n IHn].
+  - intros Gamma P A H. asimpl in *. apply H.
+  - intros Gamma P A H. asimpl in *.
+    apply double_neg_exists. apply IHn. asimpl. apply H.
+Defined.
+
+Lemma n_exists_friedman_imply :
+  forall n Gamma A, QF A -> Heyting Gamma (dnegA (add_n_exists n A) (friedman (add_n_exists n A) (add_n_exists n A))) -> Heyting Gamma (add_n_exists n A).
+Proof.
+  intros n Gamma A H1 H2.
+  eapply Nd_impE; [apply H2|].
+  nd_intro. apply friedman_n_exists.
+  eapply Nd_impE; [|apply friedman_or_equiv_l; apply H1].
+  nd_intro. eapply Nd_impE; [|nd_apply 0; nd_assumption].
+  nd_intro. nd_destruct_or 0; [|nd_assumption].
+  nd_revert 0; nd_clear 2. apply exists_imply.
+Defined.
+
+Lemma after_exists_QF :
+  forall A, QF A -> QF (after_exists A).
+Proof.
+  intros A H; destruct A; simpl in *; auto.
+  exfalso; auto.
+Defined.
+
+Lemma Sigma_0_1_after_exists_QF :
+  forall A, Sigma_0 1 A -> QF (after_exists A).
+Proof.
+  intros A H. remember 1 as n. induction H.
+  - apply after_exists_QF; auto.
+  - simpl; auto.
+  - injection Heqn; intro; subst. inversion p. apply after_exists_QF; auto.
+Defined.
+
+Lemma Sigma_0_1_equiv :
+  forall Gamma A, Sigma_0 1 A -> Heyting Gamma (dnegA A (friedman A A)) -> Heyting Gamma A.
+Proof.
+  intros Gamma A H1 H2.
+  rewrite <- add_n_exists_inverse.
+  apply n_exists_friedman_imply.
+  - apply Sigma_0_1_after_exists_QF; auto.
+  - rewrite add_n_exists_inverse; apply H2.
+Defined.
