@@ -1,8 +1,12 @@
 (* -------------------------------------------------------------------- *)
 Require Import Arith List.
 From Autosubst Require Import Autosubst.
+(* These are already required by Autosubst. However, having them        *
+ * available is useful to prove equality lemmas about the translation   *
+ * to Coq formulas.                                                     *)
 Require Import Coq.Logic.FunctionalExtensionality.
 
+(* -------------------------------------------------------------------- *)
 Inductive expr : Type :=
 | Var (_ : var)
 | Zero
@@ -10,11 +14,10 @@ Inductive expr : Type :=
 | Plus (_ : expr) (_ : expr)
 | Mult (_ : expr) (_ : expr).
 
-Infix "@+" := Plus (at level 50, left associativity).
-Infix "@*" := Mult (at level 40, left associativity).
-
 Inductive formula : Type :=
 | Bottom
+(* Autosubst complains if this line is not present.
+ * See https://github.com/uds-psl/autosubst/issues/4 *)
 | DummyVar (_ : var)
 | Implies (_ : formula) (_ : formula)
 | And (_ : formula) (_ : formula)
@@ -23,10 +26,15 @@ Inductive formula : Type :=
 | Forall (_ : {bind expr in formula})
 | Exists (_ : {bind expr in formula}).
 
+
+Infix "@+" := Plus (at level 50, left associativity).
+Infix "@*" := Mult (at level 40, left associativity).
 Notation "x @-> y" := (Implies x y) (at level 99, right associativity, y at level 200).
 Infix "@/\" := And (at level 80, right associativity).
 Infix "@\/" := Or (at level 85, right associativity).
 Infix "@=" := Eq (at level 70).
+Notation Not := (fun P => P @-> Bottom).
+Notation "@~ x" := (Not x) (at level 75, right associativity).
 
 Instance Ids_expr : Ids expr. derive. Defined.
 Instance Rename_expr : Rename expr. derive. Defined.
@@ -37,7 +45,7 @@ Instance Ids_formula : Ids formula. derive. Defined.
 Instance Rename_formula : Rename formula. derive. Defined.
 Instance Subst_formula : Subst formula. derive. Defined.
 Instance HSubstLemmas_formula : HSubstLemmas expr formula. derive. Qed.
-Instance SubstHSubstComp_expr_formula : SubstHSubstComp expr formula. derive. Qed.
+Instance SubstHSubstComp_expr_formula : SubstHSubstComp expr formula. derive. Defined.
 Instance SubstLemmas_formula : SubstLemmas formula. derive. Qed.
 
 Lemma subst_cons :
@@ -190,15 +198,6 @@ Proof.
     rewrite tr_formula_subst. f_equal.
     unfold tr_env in IHGamma. rewrite <- IHGamma. auto.
 Qed.
-
-(*
-Definition test := Forall (Exists (Or (Eq (Var 1) (Succ (Var 0))) (Eq (Var 1) Zero))).
-Parameter f : var -> nat.
-Compute tr_formula f test.
- *)
-
-Notation Not := (fun P => P @-> Bottom).
-Notation "@~ x" := (Not x) (at level 75, right associativity).
 
 Inductive PeanoAxioms : formula -> Type :=
 | Peano_0_ne_Sn : PeanoAxioms (Forall (@~ (Succ (Var 0) @= Zero)))
@@ -463,7 +462,7 @@ Proof.
   - rewrite IHB1; rewrite IHB2; auto.
   - rewrite IHB. asimpl. auto.
   - rewrite IHB. asimpl. auto.
-Qed.
+Defined.
 
 Lemma friedman_subst_map :
   forall Gamma A sigma, (map (friedman A) Gamma)..|[sigma] = map (friedman A.|[sigma]) Gamma..|[sigma].
@@ -472,7 +471,7 @@ Proof.
   - simpl; auto.
   - rewrite subst_cons. unfold map in *. rewrite subst_cons.
     rewrite IHGamma. rewrite friedman_subst. auto.
-Qed.
+Defined.
 
 Lemma double_neg_bottom :
   forall Gamma A, Heyting Gamma (dnegA A (Bottom @\/ A)) -> Heyting Gamma A.
@@ -925,7 +924,7 @@ Theorem add_n_exists_inverse :
   forall A, add_n_exists (leading_exists A) (after_exists A) = A.
 Proof.
   intros A. induction A; simpl; congruence.
-Qed.
+Defined.
 
 Lemma double_neg_exists :
   forall Gamma P A, Heyting (A :: Gamma..|[ren (+1)]) P.|[ren (+1)] -> Heyting ((dnegA P (Exists A)) :: Gamma) P.
@@ -990,4 +989,269 @@ Proof.
   apply n_exists_friedman_imply.
   - apply Sigma_0_1_after_exists_QF; auto.
   - rewrite add_n_exists_inverse; apply H2.
+Defined.
+
+Lemma Peano_Sigma_0_1_conservative :
+  forall A, Sigma_0 1 A -> Peano nil A -> Heyting nil A.
+Proof.
+  intros A H1 H2.
+  apply Sigma_0_1_equiv; auto.
+  apply friedman_Peano_Heyting with (Gamma := nil); auto.
+Defined.
+
+Fixpoint leading_foralls A :=
+  match A with
+  | Forall A => S (leading_foralls A)
+  | _ => 0
+  end.
+
+Fixpoint after_foralls A :=
+  match A with
+  | Forall A => after_foralls A
+  | _ => A
+  end.
+
+Fixpoint add_n_foralls n A :=
+  match n with
+  | 0 => A
+  | S n => Forall (add_n_foralls n A)
+  end.
+
+Theorem add_n_foralls_inverse :
+  forall A, add_n_foralls (leading_foralls A) (after_foralls A) = A.
+Proof.
+  intros A. induction A; simpl; congruence.
+Defined.
+
+Lemma after_foralls_QF :
+  forall A, QF A -> QF (after_foralls A).
+Proof.
+  intros A H; destruct A; simpl in *; auto.
+  exfalso; auto.
+Defined.
+
+Lemma Sigma_0_n_Pi_0_n_after_foralls :
+  forall n A, (Pi_0 n A -> Pi_0 n (after_foralls A)) * (Sigma_0 n A -> Sigma_0 n (after_foralls A)).
+Proof.
+  intros n. induction n as [|n IHn].
+  - intros A. split; intros H; inversion H; constructor; apply after_foralls_QF; auto.
+  - intros A. remember (S n) as m. split.
+    + intros H. induction H.
+      * apply QF_Pi; apply after_foralls_QF; auto.
+      * injection Heqm; intros; subst. apply Sigma_Pi; apply IHn; auto.
+      * simpl; auto.
+    + intros H. induction H.
+      * apply QF_Sigma; apply after_foralls_QF; auto.
+      * simpl; apply Exists_Sigma; auto.
+      * injection Heqm; intros; subst. apply Pi_Sigma; apply IHn; auto.
+Defined.
+
+Lemma Pi_0_Sn_after_foralls_Sigma_0_n :
+  forall n A, Pi_0 (S n) A -> Sigma_0 n (after_foralls A).
+Proof.
+  intros n A H. remember (S n) as m. induction H.
+  - apply QF_Sigma; apply after_foralls_QF; auto.
+  - apply Sigma_0_n_Pi_0_n_after_foralls; congruence.
+  - simpl; auto.
+Defined.
+
+Lemma add_foralls :
+  forall ax n A Gamma, nd ax Gamma..|[ren (+n)] A -> nd ax Gamma (add_n_foralls n A).
+Proof.
+  intros ax n. induction n as [|n IHn].
+  - intros. simpl. asimpl in *. auto.
+  - intros A Gamma H. simpl in *. apply Nd_forallI. apply IHn.
+    asimpl; auto.
+Defined.
+
+Lemma fold_env :
+  forall ax Gamma A, nd ax Gamma A -> nd ax nil (fold_left (fun B C => C @-> B) Gamma A).
+Proof.
+  intros ax Gamma. induction Gamma as [|B Gamma IH].
+  - simpl. auto.
+  - intros A H. simpl. apply IH.
+    nd_intro; auto.
+Defined.
+
+Lemma unfold_env :
+  forall ax Gamma A, nd ax nil (fold_left (fun B C => C @-> B) Gamma A) -> nd ax Gamma A.
+Proof.
+  intros ax Gamma. induction Gamma as [|B Gamma IH].
+  - simpl. auto.
+  - intros A H. simpl. nd_revert 0. apply IH. simpl in H. auto.
+Defined.
+
+Definition closed_formula A := forall sigma, A.|[sigma] = A.
+
+Lemma add_n_foralls_r :
+  forall A n, add_n_foralls n (Forall A) = add_n_foralls (S n) A.
+Proof.
+  intros A n; induction n; simpl in *; congruence.
+Defined.
+
+Lemma add_n_foralls_closed :
+  forall n A, closed_formula A -> closed_formula (add_n_foralls n A).
+Proof.
+  intros n. induction n as [|n IHn].
+  - intros A H; simpl in *; auto.
+  - intros A H sigma. simpl in *.
+    rewrite IHn; auto.
+Defined.
+
+Lemma add_n_foralls_compose :
+  forall n m A, add_n_foralls n (add_n_foralls m A) = add_n_foralls (n + m) A.
+Proof.
+  intros n m A. induction n; simpl in *; congruence.
+Defined.
+
+Lemma add_more_foralls_closed :
+  forall n m A, m >= n -> closed_formula (add_n_foralls n A) -> closed_formula (add_n_foralls m A).
+Proof.
+  intros n m A H1 H2.
+  replace m with ((m - n) + n) by (auto using Nat.sub_add).
+  rewrite <- add_n_foralls_compose. apply add_n_foralls_closed; auto.
+Defined.
+
+Lemma iterate_sum :
+  forall (X : Type) (f : X -> X) x n1 n2, iterate f n1 (iterate f n2 x) = iterate f (n1 + n2) x.
+Proof.
+  intros; induction n1 as [|n1 IH].
+  - asimpl; auto.
+  - simpl. unfold iterate in *. congruence.
+Defined.
+Hint Rewrite iterate_sum : autosubst.
+
+Lemma upn_max :
+  forall (P1 P2 : ((var -> expr) -> Prop)),
+    {n | forall sigma, P1 (upn n sigma)} -> {n | forall sigma, P2 (upn n sigma)} ->
+           {n | forall sigma, P1 (upn n sigma) /\ P2 (upn n sigma)}.
+Proof.
+  intros P1 P2 [n1 H1] [n2 H2].
+  set (m := max n1 n2). exists m. intros sigma. asimpl.
+  specialize (H1 (upn (m - n1) sigma)). specialize (H2 (upn (m - n2) sigma)).
+  asimpl in *.
+  rewrite Nat.add_comm in H1; rewrite Nat.sub_add in H1 by apply Nat.le_max_l.
+  rewrite Nat.add_comm in H2; rewrite Nat.sub_add in H2 by apply Nat.le_max_r.
+  auto.
+Defined.
+
+Lemma upn_succ :
+  forall n sigma, upn (S n) sigma n = Var n.
+Proof.
+  intros n. induction n as [|n IH].
+  - intros sigma. asimpl. auto.
+  - intros sigma. asimpl. rewrite IH. auto.
+Defined.
+Hint Rewrite upn_succ : autosubst.
+
+Lemma can_close_expr :
+  forall (t : expr), {n | forall sigma, t.[upn n sigma] = t}.
+Proof.
+  intros t. induction t.
+  - exists (S v). intros sigma. asimpl. rewrite upn_succ; auto.
+  - exists 0. intros sigma. simpl. auto.
+  - destruct IHt as [n H]. exists n. intros sigma. specialize (H sigma). simpl. congruence.
+  - destruct (upn_max (fun sigma => t1.[sigma] = t1) (fun sigma => t2.[sigma] = t2) IHt1 IHt2)
+      as [m H].
+    exists m. intros sigma. specialize (H sigma). asimpl. destruct H; f_equal; auto.
+  - destruct (upn_max (fun sigma => t1.[sigma] = t1) (fun sigma => t2.[sigma] = t2) IHt1 IHt2)
+      as [m H].
+    exists m. intros sigma. specialize (H sigma). asimpl. destruct H; f_equal; auto.
+Defined.
+
+Lemma can_close_formula :
+  forall A, {n | forall sigma, A.|[upn n sigma] = A}.
+Proof.
+  intros A. induction A; try (exists 0; intro sigma; simpl in *; autosubst).
+  - destruct (upn_max (fun sigma => A1.|[sigma] = A1) (fun sigma => A2.|[sigma] = A2) IHA1 IHA2)
+      as [m H].
+    exists m. asimpl. intros sigma; specialize (H sigma). destruct H.
+    f_equal; auto.
+  - destruct (upn_max (fun sigma => A1.|[sigma] = A1) (fun sigma => A2.|[sigma] = A2) IHA1 IHA2)
+      as [m H].
+    exists m. asimpl. intros sigma; specialize (H sigma). destruct H.
+    f_equal; auto.
+  - destruct (upn_max (fun sigma => A1.|[sigma] = A1) (fun sigma => A2.|[sigma] = A2) IHA1 IHA2)
+      as [m H].
+    exists m. asimpl. intros sigma; specialize (H sigma). destruct H.
+    f_equal; auto.
+  - asimpl.
+    destruct (upn_max (fun sigma => e.[sigma] = e) (fun sigma => e0.[sigma] = e0) (can_close_expr e) (can_close_expr e0))
+      as [m H].
+    exists m. intros sigma; specialize (H sigma). destruct H.
+    f_equal; auto.
+  - destruct IHA as [n IHA].
+    exists n. intros sigma. asimpl. specialize (IHA (up sigma)).
+    asimpl in *. congruence.
+  - destruct IHA as [n IHA].
+    exists n. intros sigma. asimpl. specialize (IHA (up sigma)).
+    asimpl in *. congruence.
+Defined.
+
+Lemma n_foralls_closed :
+  forall n A, (forall sigma, A.|[upn n sigma] = A) -> closed_formula (add_n_foralls n A).
+Proof.
+  intros n. induction n as [|n IHn].
+  - intros. simpl. auto.
+  - intros. rewrite <- add_n_foralls_r.
+    apply IHn. intros sigma. asimpl. rewrite H; auto.
+Defined.
+
+Lemma elim_foralls_closed :
+  forall ax n A, closed_formula (add_n_foralls n A) -> nd ax nil (add_n_foralls n A) -> forall sigma, nd ax nil A.|[sigma].
+Proof.
+  intros ax n. induction n as [|n IHn].
+  - intros A H1 H2 sigma. simpl in *. rewrite H1. auto.
+  - intros A H1 H2 sigma. simpl in *.
+    replace A.|[sigma] with A.|[Var 0 .: ((ren (+1)) >> sigma >> ren (+1))].|[sigma 0/] by autosubst.
+    apply Nd_forallE.
+    replace (Forall A.|[Var 0 .: ren (+1) >> sigma >> ren (+1)])
+      with (Forall A).|[ren (+1) >> sigma] by autosubst.
+    apply IHn; rewrite add_n_foralls_r; auto.
+Defined.
+
+Lemma fold_env_subst :
+  forall Gamma A sigma,
+    (fold_left (fun B C : formula => C @-> B) Gamma A).|[sigma] =
+    fold_left (fun B C : formula => C @-> B) Gamma..|[sigma] A.|[sigma].
+Proof.
+  intros Gamma. induction Gamma as [|B Gamma IH].
+  - intros. simpl. auto.
+  - intros. rewrite subst_cons. simpl. rewrite IH. auto.
+Defined.
+
+Lemma prove_subst :
+  forall ax Gamma A sigma, nd ax Gamma A -> nd ax Gamma..|[sigma] A.|[sigma].
+Proof.
+  intros ax Gamma A sigma H.
+  apply unfold_env.
+  replace (fold_left (fun B C : formula => C @-> B) Gamma..|[sigma] A.|[sigma])
+    with (fold_left (fun B C : formula => C @-> B) Gamma A).|[sigma] by apply fold_env_subst.
+  set (B := fold_left (fun B C : formula => C @-> B) Gamma A).
+  destruct (can_close_formula B) as [n H1].
+  eapply elim_foralls_closed.
+  - apply n_foralls_closed. apply H1.
+  - apply add_foralls. simpl. apply fold_env; auto.
+Defined.
+
+Lemma elim_foralls :
+  forall ax n Gamma A, nd ax Gamma (add_n_foralls n A) -> forall sigma, nd ax Gamma..|[ren (+n) >> sigma] A.|[sigma].
+Proof.
+  intros ax n. induction n as [|n IHn].
+  - intros Gamma A H sigma. simpl in *. asimpl. apply prove_subst. auto.
+  - intros Gamma A H sigma. rewrite <- add_n_foralls_r in H.
+    specialize (IHn Gamma (Forall A) H (ren (+1) >> sigma)).
+    apply Nd_forallE with (t := sigma 0) in IHn.
+    asimpl in *. auto.
+Defined.
+
+Lemma Peano_Pi_0_2_conservative :
+  forall A, Pi_0 2 A -> Peano nil A -> Heyting nil A.
+Proof.
+  intros A H1 H2.
+  rewrite <- add_n_foralls_inverse in H2.
+  apply elim_foralls with (sigma := ids) in H2. asimpl in H2.
+  apply Peano_Sigma_0_1_conservative in H2; [|apply Pi_0_Sn_after_foralls_Sigma_0_n; auto].
+  rewrite <- add_n_foralls_inverse.
+  apply add_foralls. asimpl. auto.
 Defined.
