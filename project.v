@@ -1,9 +1,9 @@
 (* -------------------------------------------------------------------- *)
 Require Import Arith List.
 From Autosubst Require Import Autosubst.
-(* These are already required by Autosubst. However, having them        *
- * available is useful to prove equality lemmas about the translation   *
- * to Coq formulas.                                                     *)
+(* These are already required by Autosubst. However, having them
+   available is useful to prove equality lemmas about the translation
+  to Coq formulas. *)
 Require Import Coq.Logic.FunctionalExtensionality.
 
 (* -------------------------------------------------------------------- *)
@@ -17,7 +17,7 @@ Inductive expr : Type :=
 Inductive formula : Type :=
 | Bottom
 (* Autosubst complains if this line is not present.
- * See https://github.com/uds-psl/autosubst/issues/4 *)
+   See https://github.com/uds-psl/autosubst/issues/4 *)
 | DummyVar (_ : var)
 | Implies (_ : formula) (_ : formula)
 | And (_ : formula) (_ : formula)
@@ -36,6 +36,8 @@ Infix "@=" := Eq (at level 70).
 Notation Not := (fun P => P @-> Bottom).
 Notation "@~ x" := (Not x) (at level 75, right associativity).
 
+(* -------------------------------------------------------------------- *)
+(* Magic commands to bind Autosubst to our formulas and expressions. *)
 Instance Ids_expr : Ids expr. derive. Defined.
 Instance Rename_expr : Rename expr. derive. Defined.
 Instance Subst_expr : Subst expr. derive. Defined.
@@ -45,9 +47,11 @@ Instance Ids_formula : Ids formula. derive. Defined.
 Instance Rename_formula : Rename formula. derive. Defined.
 Instance Subst_formula : Subst formula. derive. Defined.
 Instance HSubstLemmas_formula : HSubstLemmas expr formula. derive. Qed.
-Instance SubstHSubstComp_expr_formula : SubstHSubstComp expr formula. derive. Defined.
+Instance SubstHSubstComp_expr_formula : SubstHSubstComp expr formula. derive. Qed.
 Instance SubstLemmas_formula : SubstLemmas formula. derive. Qed.
 
+(* -------------------------------------------------------------------- *)
+(* Some useful lemmas that seem to be missing from Autosubst. *)
 Lemma subst_cons :
   forall A Gamma sigma, (A :: Gamma)..|[sigma] = A.|[sigma] :: Gamma..|[sigma].
 Proof.
@@ -62,6 +66,10 @@ Proof.
   - simpl. f_equal. auto.
 Qed.
 
+(* -------------------------------------------------------------------- *)
+(* Definition of the rules of natural deduction, given a way to know
+   whether a formula is an axiom. Note that this is a Type, in order to
+   allow computation on proofs. *)
 Definition env := list formula.
 Inductive nd (ax : formula -> Type) : env -> formula -> Type :=
 | Nd_axiom : forall A Gamma, ax A -> nd ax Gamma A
@@ -83,20 +91,48 @@ Inductive nd (ax : formula -> Type) : env -> formula -> Type :=
 | Nd_eq_refl : forall Gamma t, nd ax Gamma (t @= t)
 | Nd_eq_elim : forall Gamma A t1 t2, nd ax Gamma (t1 @= t2) -> nd ax Gamma A.|[t1/] -> nd ax Gamma A.|[t2/].
 
+(* -------------------------------------------------------------------- *)
+(* Some useful tactics to reason about natural deduction. *)
+
+(* Clear the [n] first hypotheses of the sequent. *)
 Ltac nd_clear n :=
   match n with
   | 0 => idtac
   | S ?n => apply Nd_weak; nd_clear n
   end.
 
-Ltac nd_assumption_n n :=
-  nd_clear n; apply Nd_assume.
+(* Try to prove the sequent by applying any assumption. *)
+Ltac nd_assumption_rec :=
+  solve [apply Nd_assume | apply Nd_weak; nd_assumption_rec].
+Tactic Notation "nd_assumption" := nd_assumption_rec.
 
-Ltac nd_assumption' :=
-  solve [apply Nd_assume | apply Nd_weak; nd_assumption'].
+(* Try to prove the sequent by applying the [n]th,
+   0-indexed, assumption. *)
+Tactic Notation "nd_assumption" constr(n) := nd_clear n; apply Nd_assume.
 
-Tactic Notation "nd_assumption" := nd_assumption'.
-Tactic Notation "nd_assumption" constr(n) := nd_assumption_n n.
+(* -------------------------------------------------------------------- *)
+(* Definition of the axioms of Heyting and Peano arithmetic. *)
+
+Inductive PeanoAxioms : formula -> Type :=
+| Peano_0_ne_Sn : PeanoAxioms (Forall (@~ (Succ (Var 0) @= Zero)))
+| Peano_ne_0_Sn : PeanoAxioms (Forall (Exists ((@~ (Var 1 @= Zero)) @-> (Succ (Var 0) @= Var 1))))
+| Peano_S_inj : PeanoAxioms (Forall (Forall ((Succ (Var 1) @= Succ (Var 0)) @-> (Var 1 @= Var 0))))
+| Peano_plus_0 : PeanoAxioms (Forall (Zero @+ Var 0 @= Var 0))
+| Peano_plus_S : PeanoAxioms (Forall (Forall (Succ (Var 1) @+ Var 0 @= Succ (Var 1 @+ Var 0))))
+| Peano_mult_0 : PeanoAxioms (Forall (Zero @* Var 0 @= Zero))
+| Peano_mult_S : PeanoAxioms (Forall (Forall (Succ (Var 1) @* Var 0 @= Var 1 @* Var 0 @+ Var 0)))
+| Peano_rec : forall P, PeanoAxioms (P.|[Zero/] @-> ((Forall (Implies P P.|[Succ (Var 0) .: ren (+1)])) @-> (Forall P))).
+
+Inductive ClassicalPeano : formula -> Type :=
+| PeanoAxiom : forall A, PeanoAxioms A -> ClassicalPeano A
+| DoubleNegation : forall A, ClassicalPeano (@~ @~ A @-> A).
+
+Notation Heyting := (nd PeanoAxioms).
+Notation Peano := (nd ClassicalPeano).
+
+(* -------------------------------------------------------------------- *)
+(* Definition of the translation of formulas into Coq [Type]s. This
+   allows to prove the theorems in a constructive setting. *)
 
 Fixpoint tr_expr sigma e :=
   match e with
@@ -116,18 +152,20 @@ Fixpoint tr_formula sigma A : Type :=
   | A @\/ B => (tr_formula sigma A) + (tr_formula sigma B)
   | e1 @= e2 => (tr_expr sigma e1) = (tr_expr sigma e2)
   | Forall A => forall x, tr_formula (x .: sigma) A
-  | Exists A => sigT (fun x => tr_formula (x .: sigma) A)
+  | Exists A => {x : nat & tr_formula (x .: sigma) A}
   end.
 
 Definition tr_env sigma Gamma := fold_right prod True (map (tr_formula sigma) Gamma).
 Hint Unfold tr_env.
 
-Lemma tr_env_rw : forall sigma A Gamma, tr_env sigma (A :: Gamma) = (tr_formula sigma A * tr_env sigma Gamma)%type.
+Lemma tr_env_cons : forall sigma A Gamma,
+    tr_env sigma (A :: Gamma) = (tr_formula sigma A * tr_env sigma Gamma)%type.
 Proof.
   intros; unfold tr_env; auto.
 Qed.
 
-Lemma tr_expr_subst : forall e sigma xi, tr_expr xi e.[sigma] = tr_expr (fun x => tr_expr xi (sigma x)) e.
+Lemma tr_expr_subst : forall e sigma xi,
+    tr_expr xi e.[sigma] = tr_expr (fun x => tr_expr xi (sigma x)) e.
 Proof.
   intros e; induction e; intros; simpl; auto.
 Qed.
@@ -138,14 +176,9 @@ Proof.
   intros e; induction e; intros; simpl; auto.
 Qed.
 
+(* Helpful tactic to prove equality of sigT types. *)
 Ltac sigT_extensionality x :=
   f_equal; [intros H1 H2; rewrite H2; reflexivity | extensionality x].
-
-Lemma sigT_extensionality : forall A (P1 P2 : A -> Type),
-    (forall x, P1 x = P2 x) -> {x : A & P1 x} = {x : A & P2 x}.
-Proof.
-  intros A P1 P2 H. f_equal; auto. extensionality x; auto.
-Qed.
 
 Lemma tr_formula_extensionality : forall A sigma1 sigma2,
     (forall x, sigma1 x = sigma2 x) -> tr_formula sigma1 A = tr_formula sigma2 A.
@@ -163,19 +196,20 @@ Lemma tr_env_extensionality : forall Gamma sigma1 sigma2,
     (forall x, sigma1 x = sigma2 x) -> tr_env sigma1 Gamma = tr_env sigma2 Gamma.
 Proof.
   intros Gamma; induction Gamma.
-  - intros; unfold tr_env; simpl; auto.
-  - intros; unfold tr_env; simpl.
+  - intros; simpl; auto.
+  - intros; do 2 (rewrite tr_env_cons); simpl.
     erewrite tr_formula_extensionality; auto.
     f_equal. apply IHGamma; auto.
 Qed.
 
-Lemma tr_formula_subst : forall A sigma xi, tr_formula xi A.|[sigma] = tr_formula (fun x => tr_expr xi (sigma x)) A.
+Lemma tr_formula_subst : forall A sigma xi,
+    tr_formula xi A.|[sigma] = tr_formula (fun x => tr_expr xi (sigma x)) A.
 Proof.
   intros A; induction A; intros; simpl; auto.
   - rewrite IHA1; rewrite IHA2; auto.
   - rewrite IHA1; rewrite IHA2; auto.
   - rewrite IHA1; rewrite IHA2; auto.
-  - repeat (rewrite tr_expr_subst); auto.
+  - do 2 (rewrite tr_expr_subst); auto.
   - extensionality x. rewrite IHA. apply tr_formula_extensionality.
     intros [|n]; simpl; asimpl; auto.
     rewrite tr_expr_subst. apply tr_expr_extensionality. intros; simpl; auto.
@@ -184,13 +218,15 @@ Proof.
     rewrite tr_expr_subst. apply tr_expr_extensionality. intros; simpl; auto.
 Qed.
 
-Lemma tr_formula_subst1 : forall A sigma e, tr_formula sigma A.|[e/] = tr_formula ((tr_expr sigma e) .: sigma) A.
+Lemma tr_formula_subst1 : forall A sigma e,
+    tr_formula sigma A.|[e/] = tr_formula ((tr_expr sigma e) .: sigma) A.
 Proof.
   intros A sigma e; rewrite tr_formula_subst; apply tr_formula_extensionality.
   intros [|n]; simpl; auto.
 Qed.
 
-Lemma tr_env_subst : forall Gamma sigma xi, tr_env xi Gamma..|[sigma] = tr_env (fun x => tr_expr xi (sigma x)) Gamma.
+Lemma tr_env_subst : forall Gamma sigma xi,
+    tr_env xi Gamma..|[sigma] = tr_env (fun x => tr_expr xi (sigma x)) Gamma.
 Proof.
   intros Gamma; induction Gamma.
   - intros; unfold tr_env; simpl; auto.
@@ -199,18 +235,8 @@ Proof.
     unfold tr_env in IHGamma. rewrite <- IHGamma. auto.
 Qed.
 
-Inductive PeanoAxioms : formula -> Type :=
-| Peano_0_ne_Sn : PeanoAxioms (Forall (@~ (Succ (Var 0) @= Zero)))
-| Peano_ne_0_Sn : PeanoAxioms (Forall (Exists ((@~ (Var 1 @= Zero)) @-> (Succ (Var 0) @= Var 1))))
-| Peano_S_inj : PeanoAxioms (Forall (Forall ((Succ (Var 1) @= Succ (Var 0)) @-> (Var 1 @= Var 0))))
-| Peano_plus_0 : PeanoAxioms (Forall (Var 0 @+ Zero @= Var 0))
-| Peano_plus_S : PeanoAxioms (Forall (Forall (Succ (Var 1) @+ Var 0 @= Succ (Var 1 @+ Var 0))))
-| Peano_mult_0 : PeanoAxioms (Forall (Zero @* Var 0 @= Zero))
-| Peano_mult_S : PeanoAxioms (Forall (Forall (Succ (Var 1) @* Var 0 @= Var 1 @* Var 0 @+ Var 0)))
-| Peano_rec : forall P, PeanoAxioms (P.|[Zero/] @-> ((Forall (Implies P P.|[Succ (Var 0) .: ren (+1)])) @-> (Forall P))).
-
-Notation Heyting := (nd PeanoAxioms).
-
+(* A formula that can be proved in Heyting arithmetic can also be
+   proved in Coq *)
 Theorem reflect : forall Gamma A, Heyting Gamma A -> forall sigma, tr_env sigma Gamma -> tr_formula sigma A.
 Proof.
   intros Gamma A dn; elim dn.
@@ -249,7 +275,7 @@ Proof.
     eauto.
   - simpl. intros A0 B0 Gamma0 H1 H2 H3 H4 sigma H5.
     destruct (H2 sigma H5) as [x H6].
-    specialize (H4 (x .: sigma)). rewrite tr_env_rw in H4.
+    specialize (H4 (x .: sigma)). rewrite tr_env_cons in H4.
     rewrite tr_formula_subst in H4.
     apply H4. rewrite tr_env_subst; auto.
   - simpl. intros Gamma0 t sigma H. reflexivity.
@@ -259,12 +285,16 @@ Proof.
     rewrite tr_formula_subst1 in *. congruence.
 Defined.
 
+(* As a trivial corollary, Heyting arithmetic is consistent. *)
 Corollary Heyting_consistent : Heyting nil Bottom -> False.
 Proof.
   intros H. apply reflect with (sigma := fun _ => 0) in H; auto.
   unfold tr_env; simpl; auto.
 Defined.
 
+(* -------------------------------------------------------------------- *)
+(* Definition of the combined double-negation and Friedman translation
+   of Peano arithmetic to Friedman arithmetic. *)
 Definition dnegA A B := (B @-> A) @-> A.
 
 Fixpoint friedman A B :=
@@ -276,12 +306,6 @@ Fixpoint friedman A B :=
   | Forall B => (Forall (dnegA A.|[ren (+1)] (friedman (A.|[ren (+1)]) B)))
   | Exists B => (dnegA A (Exists (friedman (A.|[ren (+1)]) B)))
   end.
-
-Inductive ClassicalPeano : formula -> Type :=
-| PeanoAxiom : forall A, PeanoAxioms A -> ClassicalPeano A
-| DoubleNegation : forall A, ClassicalPeano (@~ @~ A @-> A).
-
-Notation Peano := (nd ClassicalPeano).
 
 Lemma nd_cut : forall ax Gamma A B, nd ax Gamma A -> nd ax (A :: Gamma) B -> nd ax Gamma B.
 Proof.
@@ -335,8 +359,11 @@ Defined.
 
 Lemma nd_weak : forall ax Gamma Delta A B, nd ax (Gamma ++ Delta) A -> nd ax (Gamma ++ (B :: Delta)) A.
 Proof.
-  intros ax Gamma Delta A B H. apply nd_weak_r with (Gamma := Gamma ++ Delta) (Delta := Gamma) (Pi := Delta); auto.
+  intros ax Gamma Delta A B H.
+  apply nd_weak_r with (Gamma := Gamma ++ Delta) (Delta := Gamma) (Pi := Delta); auto.
 Defined.
+
+(* Helpful tactics to handle natural deduction sequents. *)
 
 Ltac nd_weak n :=
   match n with
@@ -377,6 +404,8 @@ Ltac nd_exfalso := apply Nd_botE.
 
 Ltac nd_unapply n := eapply Nd_impE; [|nd_assumption n].
 Ltac nd_revert n := nd_unapply n; nd_weak n.
+
+(* Some lemmas concerning double-negation translation *)
 
 Lemma double_neg_simpl :
   forall ax Gamma A B, nd ax Gamma A -> nd ax Gamma (dnegA B A).
@@ -453,6 +482,8 @@ Proof.
   nd_intro; apply double_neg_weak; auto.
 Defined.
 
+(* Compatibility between Friedman translation and substitution *)
+
 Lemma friedman_subst :
   forall B A sigma, (friedman A B).|[sigma] = friedman A.|[sigma] B.|[sigma].
 Proof.
@@ -505,6 +536,8 @@ Proof.
   apply Nd_eq_refl.
 Defined.
 
+(* Instantiations of Peano axioms *)
+
 Lemma Peano_0_ne_Sn_i : forall Gamma t,
     Heyting Gamma (@~ (Succ t @= Zero)).
 Proof.
@@ -539,7 +572,7 @@ Proof.
 Defined.
 
 Lemma Peano_plus_0_i : forall Gamma t,
-    Heyting Gamma ((t @+ Zero) @= t).
+    Heyting Gamma ((Zero @+ t) @= t).
 Proof.
   intros Gamma t.
   evar (Delta : env).
@@ -591,6 +624,8 @@ Ltac HA_rec :=
      |asimpl]
    |asimpl; apply Nd_forallI; asimpl; nd_intro].
 
+(* Equality is decidable in Heyting arithmetic *)
+
 Lemma eq_decidable_forall : forall Gamma,
     Heyting Gamma (Forall (Forall ((Var 1 @= Var 0) @\/ @~ (Var 1 @= Var 0)))).
 Proof.
@@ -627,6 +662,8 @@ Proof.
   asimpl in H; auto.
 Defined.
 
+(* Quantifier-free formulas are decidable *)
+
 Lemma qf_decidable : forall Gamma A, QF A -> Heyting Gamma (A @\/ (@~ A)).
 Proof.
   intros Gamma A. induction A; intros H; simpl in H; try (exfalso; assumption).
@@ -656,11 +693,15 @@ Proof.
   - apply eq_decidable.
 Defined.
 
+(* The Friedman translation of a formula that can be proved in Peano arithmetic
+   can be proved in Heyting arithmetic *)
+
 Lemma friedman_Peano_Heyting :
   forall Gamma A, Peano Gamma A -> forall P, Heyting (map (friedman P) Gamma) (dnegA P (friedman P A)).
 Proof.
   intros Gamma A dn; elim dn; clear Gamma A dn.
   - intros A Gamma H P. destruct H as [A HA | A].
+    (* Axioms *)
     + apply double_neg_simpl.
       destruct HA; simpl.
       * apply Nd_forallI. apply double_neg_simpl.
@@ -783,6 +824,9 @@ Proof.
     + nd_intro; nd_assumption.
 Defined.
 
+(* For a quantifier-free formula, friedman A P and P \/ A are equivalent
+   in Heyting arithmetic *)
+
 Lemma friedman_or_equiv :
   forall P Gamma A, QF P -> (Heyting Gamma ((friedman A P) @-> (P @\/ A)) *
                  Heyting Gamma ((P @\/ A) @-> (friedman A P))).
@@ -892,6 +936,8 @@ Proof.
     unfold tr_env; simpl; auto.
 Defined.
 
+(* Definition of Sigma_0 and Pi_0 formulas *)
+
 Inductive Sigma_0 : nat -> formula -> Type :=
 | QF_Sigma : forall n A, QF A -> Sigma_0 n A
 | Exists_Sigma : forall n A, Sigma_0 (S n) A -> Sigma_0 (S n) (Exists A)
@@ -990,6 +1036,8 @@ Proof.
   - apply Sigma_0_1_after_exists_QF; auto.
   - rewrite add_n_exists_inverse; apply H2.
 Defined.
+
+(* Peano arithmetic is Sigma_0^1 conservative over Heyting arithmetic *)
 
 Lemma Peano_Sigma_0_1_conservative :
   forall A, Sigma_0 1 A -> Peano nil A -> Heyting nil A.
@@ -1159,6 +1207,8 @@ Proof.
     exists m. intros sigma. specialize (H sigma). asimpl. destruct H; f_equal; auto.
 Defined.
 
+(* Every formula can be closed *)
+
 Lemma can_close_formula :
   forall A, {n | forall sigma, A.|[upn n sigma] = A}.
 Proof.
@@ -1234,6 +1284,35 @@ Proof.
   - apply add_foralls. simpl. apply fold_env; auto.
 Defined.
 
+(*
+
+(* Another way to prove the above lemma -- simpler, but requires to prove the
+   compatibility with substitution of all axioms. *)
+
+Lemma prove_subst2 :
+  forall ax Gamma A, nd ax Gamma A -> forall sigma, nd ax Gamma..|[sigma] A.|[sigma].
+Proof.
+  intros ax Gamma A H.
+  induction H; intros sigma; simpl; asimpl in *; try (constructor; auto; fail).
+  - admit.
+  - apply Nd_weak. specialize (IHnd sigma). auto.
+  - specialize (IHnd sigma). apply Nd_impI. auto.
+  - specialize (IHnd1 sigma); specialize (IHnd2 sigma). eapply Nd_impE; simpl; eauto.
+  - specialize (IHnd sigma); eapply Nd_andEL; eauto.
+  - specialize (IHnd sigma); eapply Nd_andER; eauto.
+  - specialize (IHnd1 sigma); specialize (IHnd2 sigma); specialize (IHnd3 sigma); eapply Nd_orE; eauto.
+  - eapply Nd_forallI. asimpl in *. specialize (IHnd (up sigma)).
+    asimpl in *. auto.
+  - replace A.|[t.[sigma] .: sigma] with A.|[up sigma].|[t.[sigma]/] by autosubst.
+    apply Nd_forallE. auto.
+  - eapply Nd_existI. asimpl. specialize (IHnd sigma). asimpl in *. eauto.
+  - eapply Nd_existE. apply IHnd1. specialize (IHnd2 (up sigma)). asimpl in *. auto.
+  - specialize (IHnd2 sigma). specialize (IHnd1 sigma).
+    replace A.|[t2.[sigma] .: sigma] with A.|[up sigma].|[t2.[sigma]/] by autosubst.
+    eapply Nd_eq_elim. apply IHnd1. asimpl in *. auto.
+
+ *)
+
 Lemma elim_foralls :
   forall ax n Gamma A, nd ax Gamma (add_n_foralls n A) -> forall sigma, nd ax Gamma..|[ren (+n) >> sigma] A.|[sigma].
 Proof.
@@ -1244,6 +1323,8 @@ Proof.
     apply Nd_forallE with (t := sigma 0) in IHn.
     asimpl in *. auto.
 Defined.
+
+(* Peano arithmetic is Pi_0^2 conservative over Heyting arithmetic *)
 
 Lemma Peano_Pi_0_2_conservative :
   forall A, Pi_0 2 A -> Peano nil A -> Heyting nil A.
